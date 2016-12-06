@@ -1,6 +1,7 @@
 package kuberang
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -9,7 +10,6 @@ import (
 	"errors"
 
 	"github.com/apprenda/kuberang/pkg/config"
-	"github.com/apprenda/kuberang/pkg/util"
 )
 
 const RunPrefix = "kuberang-"
@@ -18,48 +18,59 @@ const NGDeploymentName = RunPrefix + "nginx"
 const Timeout = 300 //seconds
 const HTTP_Timeout = 1000 * time.Millisecond
 
-func CheckKubernetes() error {
-	ngServiceName := nginxServiceName()
-	if !PrecheckKubectl() ||
-		!PrecheckNamespace() ||
-		!PrecheckServices(ngServiceName) ||
-		!PrecheckDeployments() {
-		PowerDown(ngServiceName)
-		return errors.New("Pre-conditions failed; must clean up before we can smoke test")
+func CheckKubernetes(outputFormat string) error {
+	var report report
+	switch outputFormat {
+	case "json":
+		report = &simpleReport{}
+	case "simple":
+		report = &echoReport{
+			out: os.Stdout,
+		}
+	default:
+		return fmt.Errorf("%s is not supported as an output format", outputFormat)
 	}
 
-	success := true
+	ngServiceName := nginxServiceName()
+
+	if !PrecheckKubectl(report) ||
+		!PrecheckNamespace(report) ||
+		!PrecheckServices(report, ngServiceName) ||
+		!PrecheckDeployments(report) {
+		PowerDown(report, ngServiceName)
+		if outputFormat == "json" {
+			printJSONReport(report)
+		}
+		return errors.New("Pre-conditions failed; must clean up before we can smoke test")
+	}
 
 	// Scale out busybox
 	busyboxCount := int64(1)
 	if ko := RunKubectl("run", BBDeploymentName, "--image=busybox", "--image-pull-policy=IfNotPresent", "--", "sleep", "3600"); !ko.Success {
-		util.PrettyPrintErr(os.Stdout, "Issued BusyBox start request")
-		success = false
+		report.addError("Issued BusyBox start request")
 	} else {
-		util.PrettyPrintOk(os.Stdout, "Issued BusyBox start request")
+		report.addSuccess("Issued BusyBox start request")
 	}
 	// Scale out nginx
 	// Try to run a Pod on each Node,
 	// This scheduling is not guaranteed but it gets close
 	nginxCount := int64(RunGetNodes().NodeCount())
 	if ko := RunPod(NGDeploymentName, "nginx", nginxCount); !ko.Success {
-		util.PrettyPrintErr(os.Stdout, "Issued Nginx start request")
-		success = false
+		report.addError("Issued Nginx start request")
 	} else {
-		util.PrettyPrintOk(os.Stdout, "Issued Nginx start request")
+		report.addSuccess("Issued Nginx start request")
 	}
 
 	// Check for both
-	if !WaitForDeployments(busyboxCount, nginxCount) {
+	if !WaitForDeployments(report, busyboxCount, nginxCount) {
 		return nil
 	}
 
 	// Add service
 	if ko := RunKubectl("expose", "deployment", NGDeploymentName, "--name="+ngServiceName, "--port=80"); !ko.Success {
-		util.PrettyPrintErr(os.Stdout, "Issued expose Nginx service request")
-		success = false
+		report.addError("Issued expose Nginx service request")
 	} else {
-		util.PrettyPrintOk(os.Stdout, "Issued expose Nginx service request")
+		report.addSuccess("Issued expose Nginx service request")
 	}
 
 	// Get pod & service IPs
@@ -68,59 +79,53 @@ func CheckKubernetes() error {
 	var busyboxPodName string
 	if ko := RunKubectl("get", "pods", "-l", "run=kuberang-nginx", "-o", "json"); ko.Success {
 		podIPs = ko.PodIPs()
-		util.PrettyPrintOk(os.Stdout, "Grab nginx pod ip addresses")
+		report.addSuccess("Grab nginx pod ip addresses")
 	} else {
 		podIPs = make([]string, 0)
-		util.PrettyPrintErr(os.Stdout, "Grab nginx pod ip addresses")
-		success = false
+		report.addError("Grab nginx pod ip addresses")
 	}
 
 	if ko := RunGetService(ngServiceName); ko.Success {
 		serviceIP = ko.ServiceCluserIP()
-		util.PrettyPrintOk(os.Stdout, "Grab nginx service ip address")
+		report.addSuccess("Grab nginx service ip address")
 	} else {
 		serviceIP = ""
-		util.PrettyPrintErr(os.Stdout, "Grab nginx service ip address")
-		success = false
+		report.addError("Grab nginx service ip address")
 	}
 
 	if ko := RunKubectl("get", "pods", "-l", "run=kuberang-busybox", "-o", "json"); ko.Success {
 		busyboxPodName = ko.FirstPodName()
-		util.PrettyPrintOk(os.Stdout, "Grab BusyBox pod name")
+		report.addSuccess("Grab BusyBox pod name")
 	} else {
 		busyboxPodName = ""
-		util.PrettyPrintErr(os.Stdout, "Grab BusyBox pod name")
-		success = false
+		report.addError("Grab BusyBox pod name")
 	}
 
 	// Check connectivity between pods (using busybox)
 	if ko := RunKubectl("exec", busyboxPodName, "--", "wget", "-qO-", serviceIP); busyboxPodName == "" || ko.Success {
-		util.PrettyPrintOk(os.Stdout, "Accessed Nginx service at "+serviceIP+" from BusyBox")
+		report.addSuccess("Accessed Nginx service at " + serviceIP + " from BusyBox")
 	} else {
-		util.PrettyPrintErr(os.Stdout, "Accessed Nginx service at "+serviceIP+" from BusyBox")
-		success = false
+		report.addError("Accessed Nginx service at " + serviceIP + " from BusyBox")
 	}
 	if ko := RunKubectl("exec", busyboxPodName, "--", "wget", "-qO-", ngServiceName); busyboxPodName == "" || ko.Success {
-		util.PrettyPrintOk(os.Stdout, "Accessed Nginx service via DNS "+ngServiceName+" from BusyBox")
+		report.addSuccess("Accessed Nginx service via DNS " + ngServiceName + " from BusyBox")
 	} else {
-		util.PrettyPrintErr(os.Stdout, "Accessed Nginx service via DNS "+ngServiceName+" from BusyBox")
-		success = false
+		report.addError("Accessed Nginx service via DNS " + ngServiceName + " from BusyBox")
 	}
 
 	for _, podIP := range podIPs {
 		if ko := RunKubectl("exec", busyboxPodName, "--", "wget", "-qO-", podIP); busyboxPodName == "" || ko.Success {
-			util.PrettyPrintOk(os.Stdout, "Accessed Nginx pod at "+podIP+" from BusyBox")
+			report.addSuccess("Accessed Nginx pod at " + podIP + " from BusyBox")
 		} else {
-			util.PrettyPrintErr(os.Stdout, "Accessed Nginx pod at "+podIP+" from BusyBox")
-			success = false
+			report.addError("Accessed Nginx pod at " + podIP + " from BusyBox")
 		}
 	}
 
 	// Check connectivity with internet
 	if ko := RunKubectl("exec", busyboxPodName, "--", "wget", "-qO-", "Google.com"); busyboxPodName == "" || ko.Success {
-		util.PrettyPrintOk(os.Stdout, "Accessed Google.com from BusyBox")
+		report.addSuccess("Accessed Google.com from BusyBox")
 	} else {
-		util.PrettyPrintErrorIgnored(os.Stdout, "Accessed Google.com from BusyBox")
+		report.addIgnored("Accessed Google.com from BusyBox")
 	}
 
 	// Check connectivity from current machine (using curl or wget)
@@ -129,78 +134,80 @@ func CheckKubernetes() error {
 		Timeout: HTTP_Timeout,
 	}
 	if _, err := client.Get("http://" + ngServiceName); err == nil {
-		util.PrettyPrintOk(os.Stdout, "Accessed Nginx service via DNS "+ngServiceName+" from this node")
+		report.addSuccess("Accessed Nginx service via DNS " + ngServiceName + " from this node")
 	} else {
-		util.PrettyPrintErrorIgnored(os.Stdout, "Accessed Nginx service via DNS "+ngServiceName+" from this node")
+		report.addIgnored("Accessed Nginx service via DNS " + ngServiceName + " from this node")
 	}
 	for _, podIP := range podIPs {
 		if _, err := client.Get("http://" + podIP); err == nil {
-			util.PrettyPrintOk(os.Stdout, "Accessed Nginx pod at "+podIP+" from this node")
+			report.addSuccess("Accessed Nginx pod at " + podIP + " from this node")
 		} else {
-			util.PrettyPrintErrorIgnored(os.Stdout, "Accessed Nginx pod at "+podIP+" from this node")
+			report.addIgnored("Accessed Nginx pod at " + podIP + " from this node")
 		}
 	}
 	if _, err := client.Get("http://google.com/"); err == nil {
-		util.PrettyPrintOk(os.Stdout, "Accessed Google.com from this node")
+		report.addSuccess("Accessed Google.com from this node")
 	} else {
-		util.PrettyPrintErrorIgnored(os.Stdout, "Accessed Google.com from this node")
+		report.addIgnored("Accessed Google.com from this node")
 	}
 
-	PowerDown(ngServiceName)
+	PowerDown(report, ngServiceName)
 
-	if success {
+	if outputFormat == "json" {
+		if err := printJSONReport(report); err != nil {
+			return err
+		}
+	}
+
+	if report.isSuccess() {
 		return nil
 	}
 	return errors.New("One or more required steps failed")
 }
 
-func PrecheckKubectl() bool {
-	ret := true
+func PrecheckKubectl(report report) bool {
 	if ko := RunKubectl("version"); !ko.Success {
-		util.PrettyPrintErr(os.Stdout, "Configured kubectl exists")
-		ret = false
-	} else {
-		util.PrettyPrintOk(os.Stdout, "Configured kubectl exists")
+		report.addError("Configured kubectl exists")
+		return false
 	}
-	return ret
+	report.addSuccess("Configured kubectl exists")
+	return true
 }
 
-func PrecheckServices(nginxServiceName string) bool {
-	ret := true
+func PrecheckServices(report report, nginxServiceName string) bool {
 	if ko := RunGetService(nginxServiceName); ko.Success {
-		util.PrettyPrintErr(os.Stdout, "Nginx service does not already exist")
-		ret = false
-	} else {
-		util.PrettyPrintOk(os.Stdout, "Nginx service does not already exist")
+		report.addError("Nginx service does not already exist")
+		return false
 	}
-	return ret
+	report.addSuccess("Nginx service does not already exist")
+	return true
 }
 
-func PrecheckDeployments() bool {
+func PrecheckDeployments(report report) bool {
 	ret := true
 	if ko := RunGetDeployment(BBDeploymentName); ko.Success {
-		util.PrettyPrintErr(os.Stdout, "BusyBox service does not already exist")
+		report.addError("BusyBox service does not already exist")
 		ret = false
 	} else {
-		util.PrettyPrintOk(os.Stdout, "BusyBox service does not already exist")
+		report.addSuccess("BusyBox service does not already exist")
 	}
 	if ko := RunGetDeployment(NGDeploymentName); ko.Success {
-		util.PrettyPrintErr(os.Stdout, "Nginx service does not already exist")
+		report.addError("Nginx service does not already exist")
 		ret = false
 	} else {
-		util.PrettyPrintOk(os.Stdout, "Nginx service does not already exist")
+		report.addSuccess("Nginx service does not already exist")
 	}
 	return ret
 }
 
-func PrecheckNamespace() bool {
+func PrecheckNamespace(report report) bool {
 	ret := true
 	if config.Namespace != "" {
 		if ko := RunGetNamespace(config.Namespace); !ko.Success || ko.NamespaceStatus() != "Active" {
-			util.PrettyPrintErr(os.Stdout, "Configured kubernetes namespace `" + config.Namespace + "` exists")
+			report.addError("Configured kubernetes namespace `" + config.Namespace + "` exists")
 			ret = false
 		} else {
-			util.PrettyPrintOk(os.Stdout, "Configured kubernetes namespace `" + config.Namespace + "` exists")
+			report.addError("Configured kubernetes namespace `" + config.Namespace + "` exists")
 		}
 	}
 	return ret
@@ -217,39 +224,49 @@ func CheckDeployments(busbyboxCount, nginxCount int64) bool {
 	return ret
 }
 
-func WaitForDeployments(busbyboxCount, nginxCount int64) bool {
+func WaitForDeployments(report report, busbyboxCount, nginxCount int64) bool {
 	for i := 0; i < Timeout; i++ {
 		if CheckDeployments(busbyboxCount, nginxCount) {
-			util.PrettyPrintOk(os.Stdout, "Both deployments completed successfully within timeout")
+			report.addSuccess("Both deployments completed successfully within timeout")
 			return true
 		}
 		time.Sleep(1 * time.Second)
 	}
-	util.PrettyPrintErr(os.Stdout, "Both deployments completed successfully within timeout")
+	report.addError("Both deployments completed successfully within timeout")
 	return false
 }
 
-func PowerDown(nginxServiceName string) {
+func PowerDown(report report, nginxServiceName string) {
 	// Power down service
 	if ko := RunKubectl("delete", "service", nginxServiceName); ko.Success {
-		util.PrettyPrintOk(os.Stdout, "Powered down Nginx service")
+		report.addSuccess("Powered down Nginx service")
 	} else {
-		util.PrettyPrintErr(os.Stdout, "Powered down Nginx service")
+		report.addError("Powered down Nginx service")
 	}
 	// Power down bb
 	if ko := RunKubectl("delete", "deployments", BBDeploymentName); ko.Success {
-		util.PrettyPrintOk(os.Stdout, "Powered down Busybox deployment")
+		report.addSuccess("Powered down Busybox deployment")
 	} else {
-		util.PrettyPrintErr(os.Stdout, "Powered down Busybox deployment")
+		report.addError("Powered down Busybox deployment")
 	}
 	// Power down nginx
 	if ko := RunKubectl("delete", "deployments", NGDeploymentName); ko.Success {
-		util.PrettyPrintOk(os.Stdout, "Powered down Nginx deployment")
+		report.addSuccess("Powered down Nginx deployment")
 	} else {
-		util.PrettyPrintErr(os.Stdout, "Powered down Nginx deployment")
+		report.addError("Powered down Nginx deployment")
 	}
 }
 
 func nginxServiceName() string {
 	return fmt.Sprintf("%s-%d", RunPrefix+"nginx", time.Now().UnixNano())
+}
+
+func printJSONReport(report report) error {
+	r := report.(*simpleReport)
+	b, err := json.MarshalIndent(r, "", "    ")
+	if err != nil {
+		return fmt.Errorf("error printing JSON report: %v", err)
+	}
+	fmt.Printf("%s\n", string(b))
+	return nil
 }
