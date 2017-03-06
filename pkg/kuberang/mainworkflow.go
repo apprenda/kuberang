@@ -102,7 +102,7 @@ func CheckKubernetes(skipCleanup bool) error {
 	}
 
 	// 2. Access nginx service via service name (DNS) from another pod
-	ok = retry(3, func() bool {
+	ok = retry(6, func() bool {
 		kubeOut = RunKubectl("exec", busyboxPodName, "--", "wget", "-qO-", ngServiceName)
 		return kubeOut.Success
 	})
