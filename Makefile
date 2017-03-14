@@ -1,6 +1,11 @@
 # Set the build version
 ifeq ($(origin VERSION), undefined)
-	VERSION := $(shell git rev-parse --short HEAD)
+	VERSION := $(shell git describe --tags --always --dirty)
+endif
+
+# build date
+ifeq ($(origin BUILD_DATE), undefined)
+	BUILD_DATE := $(shell date -u)
 endif
 
 # Setup some useful vars
@@ -11,10 +16,12 @@ ifeq ($(origin GLIDE_GOOS), undefined)
 	GLIDE_GOOS := $(HOST_GOOS)
 endif
 
+BUILD_FLAGS = "-X main.version=$(VERSION) -X 'main.buildDate=$(BUILD_DATE)'"
+
 build: vendor
-	go build -o bin/kuberang -ldflags "-X main.version=$(VERSION)" ./cmd
-	GOOS=darwin go build -o bin/darwin/$(HOST_GOARCH)/kuberang -ldflags "-X main.version=$(VERSION)" ./cmd
-	GOOS=linux go build -o bin/linux/$(HOST_GOARCH)/kuberang -ldflags "-X main.version=$(VERSION)" ./cmd
+	go build -o bin/kuberang -ldflags $(BUILD_FLAGS) ./cmd
+	GOOS=darwin go build -o bin/darwin/$(HOST_GOARCH)/kuberang -ldflags $(BUILD_FLAGS) ./cmd
+	GOOS=linux go build -o bin/linux/$(HOST_GOARCH)/kuberang -ldflags $(BUILD_FLAGS) ./cmd
 
 clean:
 	rm -rf bin

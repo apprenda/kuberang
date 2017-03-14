@@ -8,6 +8,7 @@ import (
 
 // Set via linker flag
 var version string
+var buildDate string
 
 func main() {
 	cmd := NewKuberangCommand(version, os.Stdin, os.Stdout)

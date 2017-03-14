@@ -8,7 +8,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// NewKismaticCommand creates the kismatic command
+// NewKuberangCommand creates the kuberang command
 func NewKuberangCommand(version string, in io.Reader, out io.Writer) *cobra.Command {
 	var skipCleanup bool
 	cmd := &cobra.Command{
@@ -26,6 +26,8 @@ func NewKuberangCommand(version string, in io.Reader, out io.Writer) *cobra.Comm
 	cmd.PersistentFlags().StringVar(&config.RegistryURL, "registry-url", "",
 		"Override the default Docker Hub URL to use a local offline registry for required Docker images.")
 	cmd.Flags().BoolVar(&skipCleanup, "skip-cleanup", false, "Don't clean up. Leave all deployed artifacts running on the cluster.")
+
+	cmd.AddCommand(NewCmdVersion(out))
 
 	return cmd
 }
