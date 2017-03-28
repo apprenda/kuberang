@@ -155,6 +155,15 @@ func CheckKubernetes(skipCleanup bool) error {
 		util.PrettyPrintErrorIgnored(out, "Accessed Google.com from this node")
 	}
 
+	// 7. Verify that the busybox pod is able to ping an API server via the kubernetes service
+	if ko := RunKubectl("exec", busyboxPodName, "--", "ping", "-c", "5", "kubernetes"); busyboxPodName == "" || ko.Success {
+		util.PrettyPrintOk(out, "Ping kubernetes service from BusyBox")
+	} else {
+		util.PrettyPrintErr(out, "Ping kubernetes service from BusyBox")
+		printFailureDetail(out, ko.CombinedOut)
+		success = false
+	}
+
 	if !success {
 		return errors.New("One or more required steps failed")
 	}
