@@ -167,11 +167,15 @@ func CheckKubernetes(skipCleanup bool) error {
 	}
 
 	// 7. Verify that the busybox pod is able to ping an API server via the kubernetes service
-	if ko := RunKubectl("exec", busyboxPodName, "--", "ping", "-c", "5", "kubernetes"); busyboxPodName == "" || ko.Success {
+	ok = retry(3, func() bool {
+		kubeOut = RunKubectl("exec", busyboxPodName, "--", "ping", "-c", "5", "kubernetes")
+		return kubeOut.Success
+	})
+	if ok {
 		util.PrettyPrintOk(out, "Ping kubernetes service from BusyBox")
 	} else {
 		util.PrettyPrintErr(out, "Ping kubernetes service from BusyBox")
-		printFailureDetail(out, ko.CombinedOut)
+		printFailureDetail(out, kubeOut.CombinedOut)
 		success = false
 	}
 
