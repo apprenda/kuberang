@@ -32,6 +32,17 @@ func CheckKubernetes(skipCleanup bool) error {
 		registryURL = config.RegistryURL + "/"
 	}
 
+	// If kubectl doesn't exist, don't bother doing anything
+	if !precheckKubectl() {
+		return errors.New("Kubectl must be configured on this machine before running kuberang")
+	}
+	util.PrettyPrintOk(os.Stdout, "Kubectl configured on this node")
+
+	// Ensure any pre-existing kuberang deployments are cleaned up
+	if err := removeExisting(ngServiceName); err != nil {
+		return err
+	}
+
 	// Make sure we have all we need
 	// Quit if we find existing kuberang deployments on the cluster
 	if !checkPreconditions(ngServiceName) {
@@ -196,9 +207,6 @@ func deployTestWorkloads(registryURL string, out io.Writer, ngServiceName string
 
 func checkPreconditions(nginxServiceName string) bool {
 	ok := true
-	if !precheckKubectl() {
-		return false // don't bother doing anything if kubectl isn't configured
-	}
 	if !precheckNamespace() {
 		ok = false
 	}
@@ -319,6 +327,21 @@ func powerDown(nginxServiceName string) {
 		util.PrettyPrintErr(os.Stdout, "Powered down Nginx deployment")
 		printFailureDetail(os.Stdout, ko.CombinedOut)
 	}
+}
+
+func removeExisting(nginxServiceName string) error {
+	ko := RunKubectl("delete", "--ignore-not-found=true",
+		fmt.Sprintf("deployment/%s", bbDeploymentName),
+		fmt.Sprintf("deployment/%s", ngDeploymentName),
+		fmt.Sprintf("service/%s", nginxServiceName),
+	)
+	if !ko.Success {
+		util.PrettyPrintErr(os.Stdout, "Delete existing deployments if they exist")
+		printFailureDetail(os.Stdout, ko.CombinedOut)
+		return errors.New("Failure removing existing kuberang deployments")
+	}
+	util.PrettyPrintOk(os.Stdout, "Delete existing deployments if they exist")
+	return nil
 }
 
 func nginxServiceName() string {
