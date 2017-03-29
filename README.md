@@ -37,9 +37,17 @@ kuberang tests your kubernetes cluster using kubectl
 
 Usage:
   kuberang [flags]
+  kuberang [command]
+
+Available Commands:
+  version     display the Kismatic CLI version
 
 Flags:
-  -n, --namespace string   Kubernetes namespace in which kuberang will operate. Defaults to 'default' if not specified.
+  -n, --namespace string      Kubernetes namespace in which kuberang will operate. Defaults to 'default' if not specified.
+      --registry-url string   Override the default Docker Hub URL to use a local offline registry for required Docker images.
+      --skip-cleanup          Don't clean up. Leave all deployed artifacts running on the cluster.
+
+Use "kuberang [command] --help" for more information about a command.
 ```
 
 # Developer notes
