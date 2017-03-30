@@ -60,8 +60,25 @@ func CheckKubernetes(skipCleanup bool) error {
 
 	// Get IPs of all nginx pods
 	podIPs := []string{}
-	if ko := RunKubectl("get", "pods", "-l", "run=kuberang-nginx", "-o", "json"); ko.Success {
-		podIPs = ko.PodIPs()
+	var ko KubeOutput
+	ok := retry(3, func() bool {
+		if ko = RunKubectl("get", "pods", "-l", "run=kuberang-nginx", "-o", "json"); ko.Success {
+			podIPs = ko.PodIPs()
+			// check for at least one pod IP
+			if len(podIPs) == 0 {
+				return false
+			}
+			// make sure no IPs are blank
+			for _, podIP := range podIPs {
+				if podIP == "" {
+					return false
+				}
+			}
+			return true
+		}
+		return false
+	})
+	if ok {
 		util.PrettyPrintOk(out, "Grab nginx pod ip addresses")
 	} else {
 		util.PrettyPrintErr(out, "Grab nginx pod ip addresses")
@@ -71,8 +88,16 @@ func CheckKubernetes(skipCleanup bool) error {
 
 	// Get the service IP of the nginx service
 	var serviceIP string
-	if ko := RunGetService(ngServiceName); ko.Success {
-		serviceIP = ko.ServiceCluserIP()
+	ok = retry(3, func() bool {
+		if ko = RunGetService(ngServiceName); ko.Success {
+			serviceIP = ko.ServiceCluserIP()
+			if serviceIP != "" {
+				return true
+			}
+		}
+		return false
+	})
+	if ok {
 		util.PrettyPrintOk(out, "Grab nginx service ip address")
 	} else {
 		util.PrettyPrintErr(out, "Grab nginx service ip address")
@@ -82,8 +107,16 @@ func CheckKubernetes(skipCleanup bool) error {
 
 	// Get the name of the busybox pod
 	var busyboxPodName string
-	if ko := RunKubectl("get", "pods", "-l", "run=kuberang-busybox", "-o", "json"); ko.Success {
-		busyboxPodName = ko.FirstPodName()
+	ok = retry(3, func() bool {
+		if ko = RunKubectl("get", "pods", "-l", "run=kuberang-busybox", "-o", "json"); ko.Success {
+			busyboxPodName = ko.FirstPodName()
+			if busyboxPodName != "" {
+				return true
+			}
+		}
+		return false
+	})
+	if ok {
 		util.PrettyPrintOk(out, "Grab BusyBox pod name")
 	} else {
 		util.PrettyPrintErr(out, "Grab BusyBox pod name")
@@ -100,7 +133,7 @@ func CheckKubernetes(skipCleanup bool) error {
 	// pods to talk to each other.
 	// 1. Access nginx service via service IP from another pod
 	var kubeOut KubeOutput
-	ok := retry(3, func() bool {
+	ok = retry(3, func() bool {
 		kubeOut = RunKubectl("exec", busyboxPodName, "--", "wget", "-qO-", serviceIP)
 		return kubeOut.Success
 	})
