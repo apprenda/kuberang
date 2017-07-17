@@ -1,5 +1,5 @@
 # Kuberang
-[![Build Status](https://snap-ci.com/Jo2EDlfuxqw3C4iQiROImco9nMV0-NhkIhr4w0Fwrsg/build_image)](https://snap-ci.com/apprenda/kuberang/branch/master)
+[![CircleCI](https://circleci.com/gh/apprenda/kuberang.svg?style=svg)](https://circleci.com/gh/apprenda/kuberang)
 
 `kuberang` is a command-line utility for smoke testing a Kubernetes install.
 
