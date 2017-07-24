@@ -24,7 +24,7 @@ const (
 
 // CheckKubernetes runs checks against a cluster. It expects to find
 // a configured `kubectl` binary in the path.
-func CheckKubernetes(skipCleanup bool) error {
+func CheckKubernetes() error {
 	out := os.Stdout
 	ngServiceName := nginxServiceName()
 	success := true
@@ -50,7 +50,7 @@ func CheckKubernetes(skipCleanup bool) error {
 		return errors.New("Pre-conditions failed")
 	}
 
-	if !skipCleanup {
+	if !config.SkipCleanup {
 		defer powerDown(ngServiceName)
 	}
 
@@ -147,16 +147,20 @@ func CheckKubernetes(skipCleanup bool) error {
 	}
 
 	// 2. Access nginx service via service name (DNS) from another pod
-	ok = retry(6, func() bool {
-		kubeOut = RunKubectl("exec", busyboxPodName, "--", "wget", "-T", wgetTimeoutSeconds, "-qO-", ngServiceName)
-		return kubeOut.Success
-	})
-	if ok {
-		util.PrettyPrintOk(out, "Accessed Nginx service via DNS "+ngServiceName+" from BusyBox")
+	if !config.SkipDNSTests {
+		ok = retry(6, func() bool {
+			kubeOut = RunKubectl("exec", busyboxPodName, "--", "wget", "-T", wgetTimeoutSeconds, "-qO-", ngServiceName)
+			return kubeOut.Success
+		})
+		if ok {
+			util.PrettyPrintOk(out, "Accessed Nginx service via DNS "+ngServiceName+" from BusyBox")
+		} else {
+			util.PrettyPrintErr(out, "Accessed Nginx service via DNS "+ngServiceName+" from BusyBox")
+			printFailureDetail(out, kubeOut.CombinedOut)
+			success = false
+		}
 	} else {
-		util.PrettyPrintErr(out, "Accessed Nginx service via DNS "+ngServiceName+" from BusyBox")
-		printFailureDetail(out, kubeOut.CombinedOut)
-		success = false
+		util.PrettyPrintSkipped(out, "Accessed Nginx service via DNS "+ngServiceName+" from BusyBox")
 	}
 
 	// 3. Access all nginx pods by IP
