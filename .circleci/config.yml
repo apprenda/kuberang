@@ -1,0 +1,31 @@
+version: 2
+jobs:
+  build:
+    docker:
+      - image: circleci/golang:1.8
+    working_directory: /go/src/github.com/apprenda/kuberang
+    steps:
+      - checkout
+      - run: make build
+      - store_artifacts:
+          path: bin/darwin
+          destination: bin/darwin
+      - store_artifacts:
+          path: bin/linux
+          destination: bin/linux
+      - deploy:
+          command: |
+            if [[ -n "$CIRCLE_TAG" ]]
+            then
+              cp bin/linux/amd64/kuberang release/kuberang-linux-amd64 && \
+              cp bin/darwin/amd64/kuberang release/kuberang-darwin-amd64 && \
+              wget https://github.com/tcnksm/ghr/releases/download/v0.5.4/ghr_v0.5.4_linux_amd64.zip && \
+              unzip ghr_v0.5.4_linux_amd64.zip && rm -rf ghr_v0.5.4_linux_amd64.zip && \
+              ./ghr -draft -u $CIRCLE_PROJECT_USERNAME $CIRCLE_TAG release/
+            fi 
+
+deployment:
+  fake_deploy_for_cci2:
+    tag: /.*/
+    commands:
+      - echo "make tags run in 2.0"
