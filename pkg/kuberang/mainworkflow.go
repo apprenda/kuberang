@@ -14,11 +14,12 @@ import (
 )
 
 const (
-	runPrefix         = "kuberang-"
-	bbDeploymentName  = runPrefix + "busybox"
-	ngDeploymentName  = runPrefix + "nginx"
-	deploymentTimeout = 300 * time.Second
-	httpTimeout       = 1000 * time.Millisecond
+	runPrefix          = "kuberang-"
+	bbDeploymentName   = runPrefix + "busybox"
+	ngDeploymentName   = runPrefix + "nginx"
+	deploymentTimeout  = 300 * time.Second
+	httpTimeout        = 3000 * time.Millisecond
+	wgetTimeoutSeconds = "3"
 )
 
 // CheckKubernetes runs checks against a cluster. It expects to find
@@ -134,7 +135,7 @@ func CheckKubernetes(skipCleanup bool) error {
 	// 1. Access nginx service via service IP from another pod
 	var kubeOut KubeOutput
 	ok = retry(3, func() bool {
-		kubeOut = RunKubectl("exec", busyboxPodName, "--", "wget", "-qO-", serviceIP)
+		kubeOut = RunKubectl("exec", busyboxPodName, "--", "wget", "-T", wgetTimeoutSeconds, "-qO-", serviceIP)
 		return kubeOut.Success
 	})
 	if ok {
@@ -147,7 +148,7 @@ func CheckKubernetes(skipCleanup bool) error {
 
 	// 2. Access nginx service via service name (DNS) from another pod
 	ok = retry(6, func() bool {
-		kubeOut = RunKubectl("exec", busyboxPodName, "--", "wget", "-qO-", ngServiceName)
+		kubeOut = RunKubectl("exec", busyboxPodName, "--", "wget", "-T", wgetTimeoutSeconds, "-qO-", ngServiceName)
 		return kubeOut.Success
 	})
 	if ok {
@@ -161,7 +162,7 @@ func CheckKubernetes(skipCleanup bool) error {
 	// 3. Access all nginx pods by IP
 	for _, podIP := range podIPs {
 		ok = retry(3, func() bool {
-			kubeOut = RunKubectl("exec", busyboxPodName, "--", "wget", "-qO-", podIP)
+			kubeOut = RunKubectl("exec", busyboxPodName, "--", "wget", "-T", wgetTimeoutSeconds, "-qO-", podIP)
 			return kubeOut.Success
 		})
 		if ok {
@@ -174,7 +175,7 @@ func CheckKubernetes(skipCleanup bool) error {
 	}
 
 	// 4. Check internet connectivity from pod
-	if ko := RunKubectl("exec", busyboxPodName, "--", "wget", "-qO-", "Google.com"); busyboxPodName == "" || ko.Success {
+	if ko := RunKubectl("exec", busyboxPodName, "--", "wget", "-T", wgetTimeoutSeconds, "-qO-", "Google.com"); busyboxPodName == "" || ko.Success {
 		util.PrettyPrintOk(out, "Accessed Google.com from BusyBox")
 	} else {
 		util.PrettyPrintErrorIgnored(out, "Accessed Google.com from BusyBox")
