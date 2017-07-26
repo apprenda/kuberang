@@ -26,7 +26,7 @@ func NewKuberangCommand(version string, in io.Reader, out io.Writer) *cobra.Comm
 		"Override the default Docker Hub URL to use a local offline registry for required Docker images.")
 	cmd.Flags().BoolVar(&config.SkipCleanup, "skip-cleanup", false, "Don't clean up. Leave all deployed artifacts running on the cluster.")
 	cmd.Flags().BoolVar(&config.SkipDNSTests, "skip-dns-tests", false, "Don't test kubernetes DNS if none is deployed.")
-
+	cmd.Flags().BoolVar(&config.IgnorePodIPAccessibilityCheck, "ignore-pod-ip-accessibility-check", false, "Don't fail the smoke test if the pod IP accessibility check fails.")
 	cmd.AddCommand(NewCmdVersion(out))
 
 	return cmd
