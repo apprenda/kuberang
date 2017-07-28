@@ -17,6 +17,7 @@ jobs:
           command: |
             if [[ -n "$CIRCLE_TAG" ]]
             then
+              mkdir release
               cp bin/linux/amd64/kuberang release/kuberang-linux-amd64 && \
               cp bin/darwin/amd64/kuberang release/kuberang-darwin-amd64 && \
               wget https://github.com/tcnksm/ghr/releases/download/v0.5.4/ghr_v0.5.4_linux_amd64.zip && \
