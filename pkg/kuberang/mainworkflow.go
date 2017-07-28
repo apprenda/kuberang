@@ -171,6 +171,8 @@ func CheckKubernetes() error {
 		})
 		if ok {
 			util.PrettyPrintOk(out, "Accessed Nginx pod at "+podIP+" from BusyBox")
+		} else if config.IgnorePodIPAccessibilityCheck {
+			util.PrettyPrintErrorIgnored(out, "Accessed Nginx pod at "+podIP+" from BusyBox")
 		} else {
 			util.PrettyPrintErr(out, "Accessed Nginx pod at "+podIP+" from BusyBox")
 			printFailureDetail(out, kubeOut.CombinedOut)
