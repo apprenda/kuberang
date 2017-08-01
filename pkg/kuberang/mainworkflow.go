@@ -60,9 +60,11 @@ func CheckKubernetes() error {
 	}
 
 	// Get IPs of all nginx pods
+	// Use a backoff retry as we have seen many cases where one of the pods
+	// fails, and we have to wait for the replicaset to deploy a new one.
 	podIPs := []string{}
 	var ko KubeOutput
-	ok := retry(3, func() bool {
+	ok := retryWithBackoff(5, func() bool {
 		if ko = RunKubectl("get", "pods", "-l", "run=kuberang-nginx", "-o", "json"); ko.Success {
 			podIPs = ko.PodIPs()
 			// check for at least one pod IP
