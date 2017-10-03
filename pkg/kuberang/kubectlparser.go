@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
-	"strconv"
 
 	"github.com/apprenda/kuberang/pkg/config"
 )
@@ -40,20 +39,12 @@ func RunGetService(svcName string) KubeOutput {
 	return RunKubectl("get", "service", svcName, "-o", "json")
 }
 
-func RunGetPodByImage(name string) KubeOutput {
-	return RunKubectl("get", "deployment", name, "-o", "json")
-}
-
 func RunGetDeployment(name string) KubeOutput {
 	return RunKubectl("get", "deployment", name, "-o", "json")
 }
 
 func RunGetNamespace(name string) KubeOutput {
 	return RunKubectl("get", "namespace", name, "-o", "json")
-}
-
-func RunPod(name string, image string, count int64) KubeOutput {
-	return RunKubectl("run", name, "--image="+image, "--image-pull-policy=IfNotPresent", "--replicas="+strconv.FormatInt(count, 10), "-o", "json")
 }
 
 func RunGetNodes() KubeOutput {
