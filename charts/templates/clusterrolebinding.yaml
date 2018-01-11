@@ -1,0 +1,19 @@
+{{- if and .Values.enabled .Values.rbac.create -}}
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: kuberang-{{ .Release.Name }}
+  labels:
+    app: kuberang
+    chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+    heritage: {{ .Release.Service }}
+    release: {{ .Release.Name }}
+roleRef:
+  kind: ClusterRole
+  name: kuberang-{{ .Release.Name }}
+  apiGroup: rbac.authorization.k8s.io
+subjects:
+- kind: ServiceAccount
+  name: kuberang-{{ .Release.Name }}
+  namespace: mantle
+{{- end -}}
