@@ -67,6 +67,11 @@ In order to clean:
 make clean
 ```
 
+In order to produce a docker image:
+```
+make docker
+```
+
 In order to produce the distribution package:
 ```
 make dist

@@ -1,0 +1,20 @@
+{{- if and .Values.enabled .Values.rbac.create -}}
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: RoleBinding
+metadata:
+  name: kuberang-{{ .Release.Name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: kuberang
+    chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+    heritage: {{ .Release.Service }}
+    release: {{ .Release.Name }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: kuberang-{{ .Release.Name }}
+subjects:
+  - kind: ServiceAccount
+    name: kuberang-{{ .Release.Name }}
+    namespace: {{ .Release.Namespace }}
+{{- end -}}

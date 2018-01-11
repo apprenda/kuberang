@@ -1,0 +1,14 @@
+#Whether kuberang is enabled or not
+enabled: true
+
+#The repository and tag of the kuberang image you want to run
+image:
+  repository:
+  tag: #E.g: "latest"
+  pullPolicy: Always
+
+#Create the necessary RBAC resources
+rbac:
+  create: true
+
+replicaCount: 1

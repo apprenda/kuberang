@@ -1,0 +1,4 @@
+name: kuberang
+version: 0.1.1
+description: kuberang is a command-line utility for smoke testing a Kubernetes install.
+
