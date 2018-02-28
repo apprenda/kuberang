@@ -20,6 +20,7 @@ func NewKuberangCommand(version string, in io.Reader, out io.Writer) *cobra.Comm
 		SilenceErrors: true,
 	}
 
+	cmd.PersistentFlags().StringVar(&config.Kubeconfig, "kubeconfig", "", "Path to the kubeconfig file")
 	cmd.PersistentFlags().StringVarP(&config.Namespace, "namespace", "n", "",
 		"Kubernetes namespace in which kuberang will operate. Defaults to 'default' if not specified.")
 	cmd.PersistentFlags().StringVar(&config.RegistryURL, "registry-url", "",

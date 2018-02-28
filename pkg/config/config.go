@@ -1,6 +1,8 @@
 package config
 
 var (
+	// Kubeconfig is the path to the kubeconfig file
+	Kubeconfig string
 	// Namespace where the kuberang tests will be executed
 	Namespace string
 	// RegistryURL to be used for downloading the container images used in the smoke test

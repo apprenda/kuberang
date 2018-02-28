@@ -15,6 +15,10 @@ type KubeOutput struct {
 }
 
 func RunKubectl(args ...string) KubeOutput {
+	if config.Kubeconfig != "" {
+		args = append([]string{"--kubeconfig=" + config.Kubeconfig}, args...)
+	}
+
 	if config.Namespace != "" {
 		args = append([]string{"--namespace=" + config.Namespace}, args...)
 	}
