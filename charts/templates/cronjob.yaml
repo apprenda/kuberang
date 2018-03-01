@@ -1,0 +1,25 @@
+{{- if .Values.enabled -}}
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+  name: "kuberang-{{ .Release.Name }}"
+spec:
+  schedule: "*/30 * * * *"
+  successfulJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          name: kuberang-{{ .Release.Name }}
+          labels:
+            chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+            heritage: {{ .Release.Service }}
+            type: kuberang-logging
+        spec:
+          containers:
+          - name: kuberang
+            image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          restartPolicy: Never
+          serviceAccount: kuberang-{{ .Release.Name }}
+          serviceAccountName: kuberang-{{ .Release.Name }}
+{{- end -}}

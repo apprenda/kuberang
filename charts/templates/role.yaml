@@ -1,0 +1,52 @@
+{{- if and .Values.enabled .Values.rbac.create -}}
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: Role
+metadata:
+  name: kuberang-{{ .Release.Name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: kuberang
+    chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+    heritage: {{ .Release.Service }}
+    release: {{ .Release.Name }}
+rules:
+  - apiGroups: 
+      - "extensions"
+    resources: 
+      - "deployments"
+    verbs: 
+      - "get"
+      - "create"
+      - "update"
+      - "delete"
+  - apiGroups: 
+      - "extensions"
+    resources: 
+      - "replicasets"
+    verbs: 
+      - "list"
+      - "get"
+      - "update"
+      - "delete"
+  - apiGroups: 
+      - "*"
+    resources: 
+      - "services"
+    verbs: 
+      - "get"
+      - "create"
+      - "post"
+      - "delete"
+  - apiGroups: 
+      - "*"
+    resources: 
+      - "pods"
+      - "pods/exec"
+    verbs: 
+      - "get"
+      - "list"
+      - "create"
+      - "delete"
+      - "post"
+      - "update" 
+{{- end -}}

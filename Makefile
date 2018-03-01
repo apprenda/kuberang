@@ -23,6 +23,10 @@ build: vendor
 	GOOS=darwin go build -o bin/darwin/$(HOST_GOARCH)/kuberang -ldflags $(BUILD_FLAGS) ./cmd
 	GOOS=linux go build -o bin/linux/$(HOST_GOARCH)/kuberang -ldflags $(BUILD_FLAGS) ./cmd
 
+docker: vendor
+	CGO_ENABLED=0 GOOS=linux go build -a -o docker/kuberang -ldflags $(BUILD_FLAGS) ./cmd
+	docker build --rm -t kuberang:$(VERSION) docker/
+
 clean:
 	rm -rf bin
 	rm -rf out
