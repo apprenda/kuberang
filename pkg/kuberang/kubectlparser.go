@@ -3,6 +3,8 @@ package kuberang
 import (
 	"encoding/json"
 	"fmt"
+	"io"
+	"log"
 	"os/exec"
 
 	"github.com/apprenda/kuberang/pkg/config"
@@ -24,6 +26,40 @@ func RunKubectl(args ...string) KubeOutput {
 	}
 
 	kubeCmd := exec.Command("kubectl", args...)
+	bytes, err := kubeCmd.CombinedOutput()
+	if err != nil {
+		return KubeOutput{
+			Success:     false,
+			CombinedOut: string(bytes),
+			RawOut:      bytes,
+		}
+	}
+	return KubeOutput{
+		Success:     true,
+		CombinedOut: string(bytes),
+		RawOut:      bytes,
+	}
+}
+
+func RunKubectlWithYAML(YAML string, args ...string) KubeOutput {
+	if config.Kubeconfig != "" {
+		args = append([]string{"--kubeconfig=" + config.Kubeconfig}, args...)
+	}
+
+	if config.Namespace != "" {
+		args = append([]string{"--namespace=" + config.Namespace}, args...)
+	}
+
+	kubeCmd := exec.Command("kubectl", args...)
+	stdin, err := kubeCmd.StdinPipe()
+	if err != nil {
+		log.Fatal(err)
+	}
+	go func() {
+		defer stdin.Close()
+		io.WriteString(stdin, YAML)
+	}()
+
 	bytes, err := kubeCmd.CombinedOutput()
 	if err != nil {
 		return KubeOutput{
@@ -92,6 +128,19 @@ func (ko KubeOutput) PodIPs() []string {
 	return podIPs
 }
 
+func (ko KubeOutput) PodPhases() []string {
+	//In Scala, this code would be gorgeous. In Golang, it's a blood blister
+	resp := PodsResponse{}
+	if err := json.Unmarshal(ko.RawOut, &resp); err != nil {
+		fmt.Println(err)
+	}
+	phases := make([]string, len(resp.Items))
+	for i, item := range resp.Items {
+		phases[i] = item.Status.Phase
+	}
+	return phases
+}
+
 func (ko KubeOutput) FirstPodName() string {
 	resp := PodsResponse{}
 	if err := json.Unmarshal(ko.RawOut, &resp); err != nil {
@@ -110,6 +159,7 @@ type PodsResponse struct {
 			Name string `json:"name"`
 		} `json:"metadata"`
 		Status struct {
+			Phase string `json:"phase"`
 			PodIP string `json:"podIP"`
 		} `json:"status"`
 	} `json:"items"`
