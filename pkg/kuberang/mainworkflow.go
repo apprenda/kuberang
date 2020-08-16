@@ -1,10 +1,13 @@
 package kuberang
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"strconv"
+	"text/template"
 	"time"
 
 	"errors"
@@ -63,10 +66,12 @@ func CheckKubernetes() error {
 	// Use a backoff retry as we have seen many cases where one of the pods
 	// fails, and we have to wait for the replicaset to deploy a new one.
 	podIPs := []string{}
+	phases := []string{}
 	var ko KubeOutput
 	ok := retryWithBackoff(5, func() bool {
 		if ko = RunKubectl("get", "pods", "-l", fmt.Sprintf("app=kuberang-nginx,kuberang/testid=%d", testID), "-o", "json"); ko.Success {
 			podIPs = ko.PodIPs()
+			phases = ko.PodPhases()
 			// check for at least one pod IP
 			if len(podIPs) == 0 {
 				return false
@@ -74,6 +79,12 @@ func CheckKubernetes() error {
 			// make sure no IPs are blank
 			for _, podIP := range podIPs {
 				if podIP == "" {
+					return false
+				}
+			}
+			// and that the pods are actually running!
+			for _, podPhase := range phases {
+				if podPhase != "Running" {
 					return false
 				}
 			}
@@ -214,10 +225,106 @@ func CheckKubernetes() error {
 	return nil
 }
 
+func getBusyBoxYaml(deploymentName string, testID int64, registryURL string) string {
+	type templateStruct struct {
+		DeploymentName string
+		TestID         string
+		RegistryURL    string
+	}
+	templateData := templateStruct{deploymentName, strconv.FormatInt(testID, 10), registryURL}
+	deploymentTemplate := `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{.DeploymentName}}
+  labels:
+    app: kuberang-busybox
+    kuberang/testid: "{{.TestID}}"
+spec:
+  selector:
+    matchLabels:
+      app: kuberang-busybox
+      kuberang/testid: "{{.TestID}}"
+  template:
+    metadata:
+      labels:
+        app: kuberang-busybox
+        kuberang/testid: "{{.TestID}}"
+    spec:
+      containers:
+      - name: busybox
+        image: {{.RegistryURL}}busybox:latest
+        imagePullPolicy: IfNotPresent
+        command:
+        - sh
+        - -c
+        - sleep 3600
+`
+	tmpl, err := template.New("test").Parse(deploymentTemplate)
+	if err != nil {
+		panic(err)
+	}
+	var output bytes.Buffer
+	err = tmpl.Execute(&output, templateData)
+	if err != nil {
+		panic(err)
+	}
+	return output.String()
+}
+
+func getNginxYaml(deploymentName string, testID int64, registryURL string, replicas int64) string {
+	type templateStruct struct {
+		DeploymentName string
+		TestID         string
+		RegistryURL    string
+		Replicas       string
+	}
+	templateData := templateStruct{deploymentName, strconv.FormatInt(testID, 10), registryURL, strconv.FormatInt(replicas, 10)}
+
+	//if ko := RunKubectl("run", ngDeploymentName,
+	//fmt.Sprintf("--image=%snginx:stable-alpine", registryURL),
+	//"--image-pull-policy=IfNotPresent", fmt.Sprintf("--replicas=%d", nginxCount),
+	//fmt.Sprintf("--labels=app=kuberang-nginx,kuberang/testid=%d", testID), "-o", "json"); !ko.Success {
+	deploymentTemplate := `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{.DeploymentName}}
+  labels:
+    app: kuberang-nginx
+    kuberang/testid: "{{.TestID}}"
+spec:
+  replicas: {{.Replicas}}
+  selector:
+    matchLabels:
+      app: kuberang-nginx
+      kuberang/testid: "{{.TestID}}"
+  template:
+    metadata:
+      labels:
+        app: kuberang-nginx
+        kuberang/testid: "{{.TestID}}"
+    spec:
+      containers:
+      - name: nginx
+        image: {{.RegistryURL}}nginx:stable-alpine
+        imagePullPolicy: IfNotPresent
+`
+	tmpl, err := template.New("test").Parse(deploymentTemplate)
+	if err != nil {
+		panic(err)
+	}
+	var output bytes.Buffer
+	err = tmpl.Execute(&output, templateData)
+	if err != nil {
+		panic(err)
+	}
+	return output.String()
+}
+
 func deployTestWorkloads(registryURL string, out io.Writer, ngServiceName string, bbDeploymentName string, ngDeploymentName string, testID int64) bool {
+
 	// Scale out busybox
 	busyboxCount := int64(1)
-	if ko := RunKubectl("run", bbDeploymentName, fmt.Sprintf("--image=%sbusybox:latest", registryURL), "--image-pull-policy=IfNotPresent", fmt.Sprintf("--labels=app=kuberang-busybox,kuberang/testid=%d", testID), "--", "sleep", "3600"); !ko.Success {
+	if ko := RunKubectlWithYAML(getBusyBoxYaml(bbDeploymentName, testID, registryURL), "apply", "-f", "-"); !ko.Success {
 		util.PrettyPrintErr(out, "Issued BusyBox start request")
 		printFailureDetail(out, ko.CombinedOut)
 		return false
@@ -228,7 +335,7 @@ func deployTestWorkloads(registryURL string, out io.Writer, ngServiceName string
 	// Try to run a Pod on each Node,
 	// This scheduling is not guaranteed but it gets close
 	nginxCount := int64(RunGetNodes().NodeCount())
-	if ko := RunKubectl("run", ngDeploymentName, fmt.Sprintf("--image=%snginx:stable-alpine", registryURL), "--image-pull-policy=IfNotPresent", fmt.Sprintf("--replicas=%d", nginxCount), fmt.Sprintf("--labels=app=kuberang-nginx,kuberang/testid=%d", testID), "-o", "json"); !ko.Success {
+	if ko := RunKubectlWithYAML(getNginxYaml(ngDeploymentName, testID, registryURL, nginxCount), "apply", "-f", "-"); !ko.Success {
 		util.PrettyPrintErr(out, "Issued Nginx start request")
 		printFailureDetail(out, ko.CombinedOut)
 		return false
